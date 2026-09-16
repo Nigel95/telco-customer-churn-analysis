@@ -1,0 +1,500 @@
+/*========================================================================
+  TELCO CUSTOMER CHURN ANALYSIS
+  ========================================================================
+
+  Dataset  : Telco Customer Churn
+  Source   : IBM Sample Dataset / Kaggle
+  Database : Telco_Churn
+  Table    : Dataset_Telco_churn
+
+  OBJECTIF
+  ----------
+Identifier les principaux facteurs associés au taux de désabonnement des clients
+et déterminer un segment de clientèle pouvant être priorisé dans le cadre 
+des actions de fidélisation.
+
+  ANALYSIS APPROACH
+  -----------------
+  1. Churn overview
+  2. Contract analysis
+  3. Tenure analysis
+  4. Monthly charges analysis
+  5. Internet service analysis
+  6. Technical support analysis
+  7. Segment identification
+  8. Revenue exposure
+  9. Additional analysis: payment method
+
+  NOTE
+  ----
+  L’analyse met en évidence des associations entre les caractéristiques des clients
+  et le taux de churn. Elle n’établit toutefois pas de lien de causalité.
+===========================================================================*/
+
+create database Telco_Churn
+
+USE Telco_Churn;
+
+select top 5 * from Telco_Churn.dbo.Dataset_Telco_churn;
+
+/*========================================================
+  1. CHURN OVERVIEW
+  Vue d'ensemble du churn
+========================================================*/
+
+--Total Customers 
+                                   
+select count(distinct customerID )
+from Telco_Churn.dbo.Dataset_Telco_churn;
+
+--Number of churned customers
+
+SELECT 
+    SUM(CASE WHEN Churn = 'Yes' THEN 1 ELSE 0 END) AS nb_churn
+FROM Dataset_Telco_churn;
+
+-- Overall churn rate
+SELECT 
+concat(cast(sum(case when Churn='Yes' then 1 ELSE 0 END)*100.0
+ /count(distinct customerID) 
+ as decimal(10,2)),'%')  as churn_percentage
+from Dataset_Telco_churn;
+
+/*========================================================
+  2. CONTRACT ANALYSIS
+  Analyse du type de contrat
+========================================================*/
+
+--Contract Analysis
+
+select Contract,
+	  COUNT(DISTINCT customerID) as nb_contract,
+	  cast(sum(case when Churn ='Yes' then 1 else 0 END)*100.0/count(distinct customerID) as decimal(10,2)) as churn_pct
+from Dataset_Telco_churn
+group by Contract;
+--> Le type de contrat est fortement associé au taux de churn. Les clients en contrat mensuel présentent un taux de churn nettement supérieur aux clients engagés sur un ou deux ans.
+
+ 
+/*========================================================
+  3. TENURE ANALYSIS
+  Analyse de l'ancienneté
+========================================================*/
+
+--Churn by tenure
+WITH tenure_segmentation AS (
+    SELECT 
+        customerID,
+        Churn,
+        CASE 
+            WHEN tenure <= 6 THEN '0 à 6 mois'
+            WHEN tenure <= 12 THEN '7 à 12 mois'
+            WHEN tenure <= 24 THEN '13 à 24 mois'
+            WHEN tenure <= 48 THEN '25 à 48 mois'
+            ELSE '49 mois et +'
+        END AS tenure_group,
+        CASE 
+            WHEN tenure <= 6 THEN 1
+            WHEN tenure <= 12 THEN 2
+            WHEN tenure <= 24 THEN 3
+            WHEN tenure <= 48 THEN 4
+            ELSE 5
+        END AS ordre
+    FROM Dataset_Telco_churn
+)
+
+SELECT 
+    tenure_group,
+    COUNT(*) AS nb_clients,
+    CAST(
+        SUM(CASE WHEN Churn = 'Yes' THEN 1 ELSE 0 END) * 100.0 
+        / COUNT(*)
+        AS DECIMAL(10,2)
+    ) AS churn_pct
+FROM tenure_segmentation
+GROUP BY tenure_group, ordre
+ORDER BY ordre;
+--> Le taux de churn diminue fortement avec l'ancienneté : les clients les plus récents présentent un taux de churn plus élevé, tandis que le churn diminue progressivement avec l'ancienneté. Cette baisse devient particulièrement marquée à partir de 13 à 24 mois.
+
+
+--Contract by tenure
+
+WITH tenure_segmentation AS (
+    SELECT 
+	    Contract,
+        customerID,
+        Churn,
+        CASE 
+            WHEN tenure <= 6 THEN '0 à 6 mois'
+            WHEN tenure <= 12 THEN '7 à 12 mois'
+            WHEN tenure <= 24 THEN '13 à 24 mois'
+            WHEN tenure <= 48 THEN '25 à 48 mois'
+            ELSE '49 mois et +'
+        END AS tenure_group,
+        CASE 
+            WHEN tenure <= 6 THEN 1
+            WHEN tenure <= 12 THEN 2
+            WHEN tenure <= 24 THEN 3
+            WHEN tenure <= 48 THEN 4
+            ELSE 5
+        END AS ordre
+    FROM Dataset_Telco_churn
+)
+
+SELECT 
+     Contract,
+    tenure_group,
+    COUNT(*) AS nb_clients,
+    CAST(
+        SUM(CASE WHEN Churn = 'Yes' THEN 1 ELSE 0 END) * 100.0 
+        / COUNT(*)
+        AS DECIMAL(10,2)
+    ) AS churn_pct
+FROM tenure_segmentation
+GROUP BY contract,tenure_group, ordre
+ORDER BY contract,ordre;
+
+--> La relation entre ancienneté et churn varie fortement selon le type de contrat. Elle est particulièrement marquée chez les clients en contrat mensuel, tandis que le churn reste relativement faible et stable pour les contrats d'un an et de deux ans.
+
+
+--- Contract_distribution × Tenure
+---  Type de contrat et ancienneté
+
+
+-- CTE 1 : à chaque client on attribut juste un groupe d'ancienneté.
+WITH tenure_segmentation AS (
+    SELECT 
+	    customerID,
+	    Contract,
+        CASE 
+            WHEN tenure <= 6 THEN '0 à 6 mois'
+            WHEN tenure <= 12 THEN '7 à 12 mois'
+            WHEN tenure <= 24 THEN '13 à 24 mois'
+            WHEN tenure <= 48 THEN '25 à 48 mois'
+            ELSE '49 mois et +'
+        END AS tenure_group,
+		  CASE 
+          WHEN tenure <= 6 THEN 1
+            WHEN tenure <= 12 THEN 2
+            WHEN tenure <= 24 THEN 3
+            WHEN tenure <= 48 THEN 4
+            ELSE 5
+        END AS ordre
+    FROM Dataset_Telco_churn
+)
+-- CTE 2 : le nb de clients pour chaque combinaison ancienneté + contrat
+ ,contract_counts AS (
+    SELECT 
+        tenure_group,
+        contract,
+        ordre,
+        COUNT(DISTINCT customerID) AS nb_clients
+    FROM tenure_segmentation
+    GROUP BY tenure_group, contract, ordre)
+--> Pour chaque groupe d'ancienneté, on additionne les clients de tous les contrats, mais conserve chaque ligne de contrat, et on calcule le pourcentage
+SELECT 
+    tenure_group,
+    contract,
+    nb_clients,
+    SUM(nb_clients) OVER(PARTITION BY tenure_group) AS total_groupe,--sum(nb_clients) over(partition by tenure_group) pour chaque groupe ancienneté, additionne tous les nb_clients et conserve chaque ligne.
+    CAST(
+        nb_clients * 100.0 
+        / SUM(nb_clients) OVER(PARTITION BY tenure_group)
+        AS DECIMAL(5,2) -- pour obtenir le pourcentage du groupe
+    ) AS pct_group
+FROM contract_counts
+ORDER BY ordre, contract;
+--> Les nouveaux clients sont très majoritairement en contrat mensuel, et les nouveaux clients en contrat mensuel présentent un taux de churn particulièrement élevé.[Nouveaux clients(0 à 6 mois) --> 95.41% en Month to Month--> 55.2% de churn
+
+/*=======================================================
+  4. MONTHLY CHARGES ANALYSIS
+  Analyse de la facturation mensuelle
+========================================================*/
+--Vérifier s'il y a des variables non convertibles en décimales dans la colonne MonthlyCharges (Data Quality check)
+select MonthlyCharges
+from Dataset_Telco_churn
+where TRY_CAST(MonthlyCharges as decimal(10,2)) is null;
+
+--Churn by MonthlyCharges
+WITH MonthCharges_clean as(
+        SELECT 
+	    customerID,
+		Churn,
+		cast(MonthlyCharges as decimal (10,2)) as MonthlyCharges
+		FROM Dataset_Telco_Churn),
+
+MonthlyCharges_segmentation AS (
+    SELECT 
+	    customerID,
+		Churn,
+     CASE 
+		WHEN MonthlyCharges <= 30 THEN '0 à 30 €'
+		WHEN MonthlyCharges  <= 50 THEN '30 à 50 €'
+		WHEN MonthlyCharges <= 70 THEN '50 à 70 €'
+		WHEN MonthlyCharges <= 89 THEN '70 à 89 €'
+		ELSE '90 € et +'
+	END AS monthcharges_group,
+     CASE 
+		WHEN MonthlyCharges <= 30 THEN 1
+		WHEN MonthlyCharges <= 50 THEN 2
+		WHEN MonthlyCharges <= 70 THEN 3
+		WHEN MonthlyCharges <= 89 THEN 4
+		ELSE 5
+		END as ordre_group
+		FROM MonthCHarges_clean)
+
+	Select monthcharges_group,
+	count(distinct customerID) as nb_clients,
+	cast(sum(case when Churn ='Yes' then 1 else 0 END) * 100.0 / count(*) as decimal (10,2)) as churn_pct
+	from MonthlyCharges_segmentation
+	group by monthcharges_group,ordre_group
+	order by ordre_group;
+
+--> MonthlyCharges a été identifié comme une colonne de type VARCHAR malgré sa nature numérique. Une conversion en DECIMAL(10,2) a donc été appliquée dans une couche de nettoyage avant les analyses?
+
+
+--MonthlyCharges × Contract
+--Objectif : vérifier si l'association entre facturation mensuelle et churn varie selon le type de contrat.
+
+
+WITH MonthCharges_clean as(
+        SELECT 
+		Churn,
+		Contract,
+		cast(MonthlyCharges as decimal (10,2)) as MonthlyCharges
+		FROM Dataset_Telco_Churn),
+
+MonthlyCharges_segmentation AS (
+    SELECT 
+		Churn,
+		Contract,
+     CASE 
+		WHEN MonthlyCharges <= 30 THEN '0 à 30 €'
+		WHEN MonthlyCharges  <= 50 THEN '30 à 50 €'
+		WHEN MonthlyCharges <= 70 THEN '50 à 70 €'
+		WHEN MonthlyCharges <= 89 THEN '70 à 89 €'
+		ELSE '90 € et +'
+	END AS monthcharges_group,
+     CASE 
+		WHEN MonthlyCharges <= 30 THEN 1
+		WHEN MonthlyCharges <= 50 THEN 2
+		WHEN MonthlyCharges <= 70 THEN 3
+		WHEN MonthlyCharges <= 89 THEN 4
+		ELSE 5
+		END as ordre_group
+		FROM MonthCHarges_clean)
+
+	Select monthcharges_group,
+	Contract,
+	cast(sum(case when Churn ='Yes' then 1 else 0 END) * 100.0 / count(*) as decimal (10,2)) as churn_pct
+	from MonthlyCharges_segmentation
+	group by monthcharges_group,ordre_group, Contract
+	order by ordre_group, contract;
+
+/*========================================================
+  5. INTERNET SERVICE ANALYSIS
+  Analyse du service Internet
+========================================================*/
+-- InternetService x Churn
+	Select InternetService,
+	cast(sum(case when Churn ='Yes' then 1 else 0 END) * 100.0 / count(InternetService) as decimal (10,2)) as churn_pct
+	from Dataset_Telco_churn
+	group by InternetService; --Les clients disposant d'une connexion Fiber optic présentent un taux de churn nettement supérieur aux clients DSL ou aux clients sans service Internet.
+
+
+-- InternetService x Contract
+	Select Contract,
+	internetservice,
+	cast(sum(case when Churn ='Yes' then 1 else 0 END) * 100.0 / count(*) as decimal (10,2)) as churn_pct
+	from Dataset_Telco_churn
+	group by contract, InternetService
+	order by contract; --le contrat Month-to-month reste associé au churn élevé quel que soit le type de connexion.
+
+
+	
+/*====================================================
+6. TECHNICAL SUPPORT ANALYSIS
+Objectif :les clients sans dispositif de services de support
+ou de sécurité ont ils un churn plus élevé?
+===========================================================*/
+
+--Taux de churn et Tech support
+	Select
+	TechSupport,
+	cast(sum(case when Churn ='Yes' then 1 else 0 END) * 100.0 / count(*) as decimal (10,2)) as churn_pct
+	from Dataset_Telco_churn
+	group by TechSupport; 
+--> L'absence de support technique est fortement associée au churn : les clients disposant d'un service Internet mais sans support technique présentent un taux de churn de 41,64 %, contre 15,17 % pour ceux bénéficiant du support.
+
+--Techsupport x contract 
+	Select
+	contract,
+	TechSupport,
+	cast(sum(case when Churn ='Yes' then 1 else 0 END) * 100.0 / count(*) as decimal (10,2)) as churn_pct
+	from Dataset_Telco_churn
+	group by contract,TechSupport
+	order by contract;
+--> L'association entre support technique et churn semble particulièrement forte chez les clients Month-to-month, alors qu'elle est beaucoup plus faible chez les clients engagés sur un an ou deux ans
+
+
+--InternetService × TechSupport → Churn
+
+	Select
+	InternetService,
+	TechSupport,
+	cast(sum(case when Churn ='Yes' then 1 else 0 END) * 100.0 / count(*) as decimal (10,2)) as churn_pct
+	from Dataset_Telco_churn
+	group by InternetService,TechSupport
+	order by InternetService;
+--> L'absence de support technique est associée à un churn plus élevé, aussi bien chez les clients DSL que Fiber optic.
+
+/*===========================================================
+7. SEGMENT IDENTIFICATION
+Month to Month x Fiber Optic x No technique
+Identification d'un segment particulièrement exposé au churn
+============================================================*/
+
+--Segment prioritaire
+select
+Contract,
+count(distinct customerid) as nb_client_segment,
+InternetService,
+Techsupport,
+cast(sum(case when Churn ='Yes' then 1 else 0 END) * 100.0 / count(*) as decimal (10,2)) as churn_pct
+from Dataset_Telco_churn
+where contract = 'Month-to-month' and InternetService ='Fiber optic' and TechSupport = 'No'
+group by Contract,InternetService,techsupport
+order by contract;
+--> Les clients cumulant les trois caractéristiques Month-to-month + Fiber optic + absence de support technique présentent un taux de churn de 57,52 %.
+
+/*============================================
+8. REVENUE EXPOSURE
+["Month to Month" x "Fiber Optic" x "No tech support"]
+=============================================*/
+
+-- Nb de personne ayant churnés pour le segment
+SELECT
+    COUNT(distinct customerID) AS nb_clients,
+    SUM(CASE WHEN Churn = 'Yes' THEN 1 ELSE 0 END) AS nb_churn,
+    CAST(
+        SUM(CASE WHEN Churn = 'Yes' THEN 1 ELSE 0 END) * 100.0
+        / COUNT(distinct customerID)
+        AS DECIMAL(10,2)
+    ) AS churn_pct
+FROM Dataset_Telco_churn
+WHERE Contract = 'Month-to-month'
+  AND InternetService = 'Fiber optic'
+  AND TechSupport = 'No';
+
+--> 1033 clients ont churnés sur 1796 clients sur ce segment 
+
+
+--Valeur mensuelles totales des clients qui ont churné (Exposition Financière)
+
+SELECT
+    COUNT(distinct customerID) AS nb_clients,
+    SUM(CASE WHEN Churn = 'Yes' THEN 1 ELSE 0 END) AS nb_churn,
+	sum(CASE WHEN Churn = 'Yes' then cast(MonthlyCharges as decimal (5,2)) ELSE 0 END) AS facturation_month_churn,
+    CAST(
+        SUM(CASE WHEN Churn = 'Yes' THEN 1 ELSE 0 END) * 100.0
+        / COUNT(customerID)
+        AS DECIMAL(10,2)
+    ) AS churn_pct
+FROM Dataset_Telco_churn
+WHERE Contract = 'Month-to-month'
+  AND InternetService = 'Fiber optic'
+  AND TechSupport = 'No';
+
+--> 88165 € de facturation mensuelle totale associée au churn pour les clients de ce segment (Month to month , fiber optic, no tech support)
+
+
+---Le poids de notre segment dans le churn total
+
+SELECT
+    SUM(CASE 
+            WHEN Churn = 'Yes' 
+            THEN 1 
+            ELSE 0 
+        END) AS nb_churn_tot,
+
+    SUM(CASE 
+            WHEN Churn = 'Yes'
+             AND Contract = 'Month-to-month'
+             AND InternetService = 'Fiber optic'
+             AND TechSupport = 'No'
+            THEN 1
+            ELSE 0
+        END) AS nb_churn_segmt,
+
+    CAST(
+        SUM(CASE 
+                WHEN Churn = 'Yes'
+                 AND Contract = 'Month-to-month'
+                 AND InternetService = 'Fiber optic'
+                 AND TechSupport = 'No'
+                THEN 1
+                ELSE 0
+            END) * 100.0
+        /
+        SUM(CASE 
+                WHEN Churn = 'Yes'
+                THEN 1
+                ELSE 0
+            END)
+        AS DECIMAL(10,2)
+    ) AS prop_churn_segmt
+
+FROM Dataset_Telco_churn;
+
+--> Résultat : 55.27%, plus de la moitié de tous les churners provienent de ce seul segment
+
+/*========================================================
+  9. ADDITIONAL ANALYSIS
+  Objectif : vérifier si le mode de paiement apporte
+  un signal complémentaire après l'analyse du contrat
+  et de l'ancienneté.
+========================================================*/
+
+--PaymentMethod × Churn
+select PaymentMethod,COUNT(DISTINCT customerID) as nb_payment_method,
+		cast(sum(case when Churn ='Yes' then 1 else 0 END)*100.0/count(distinct customerID) as decimal(10,2)) as churn_pct
+from Dataset_Telco_churn
+group by PaymentMethod;
+
+--PaymentMethod × Contract
+
+	Select PaymentMethod,
+	Contract,
+	count (customerid) as nb_churn_new,
+	cast(sum(case when Churn ='Yes' then 1 else 0 END) * 100.0 / count(*) as decimal (10,2)) as churn_pct
+	from Dataset_Telco_churn
+	group by PaymentMethod,Contract
+	order by contract
+
+--PaymentMethod × Tenure
+	SELECT
+    PaymentMethod,
+	COUNT(DISTINCT customerID) as client_concerne,
+    CASE
+        WHEN tenure <= 6 THEN '0-6 mois'
+        WHEN tenure <= 12 THEN '7-12 mois'
+        WHEN tenure <= 24 THEN '13-24 mois'
+        WHEN tenure <= 48 THEN '25-48 mois'
+        ELSE '49+ mois'
+    END AS tenure_group,
+    CAST(
+        SUM(CASE WHEN Churn = 'Yes' THEN 1 ELSE 0 END) * 100.0
+        / COUNT(*)
+        AS DECIMAL(10,2)
+    ) AS churn_pct
+FROM Dataset_Telco_churn
+GROUP BY
+    PaymentMethod,
+    CASE
+        WHEN tenure <= 6 THEN '0-6 mois'
+        WHEN tenure <= 12 THEN '7-12 mois'
+        WHEN tenure <= 24 THEN '13-24 mois'
+        WHEN tenure <= 48 THEN '25-48 mois'
+        ELSE '49+ mois'
+    END
+ORDER BY
+    PaymentMethod;

@@ -58,7 +58,7 @@ Le fichier de données brut n'est pas inclus dans le repository. La source du da
 
 ---
 
-# 🔎 1. Exploration des données — Python
+# 🔎 1. Exploration des données : Python
 
 ### Objectif
 
@@ -102,7 +102,7 @@ Ces observations constituent des **hypothèses de travail** pour l'analyse SQL.
 
 ---
 
-# 🗄️ 2. Analyse métier — SQL
+# 🗄️ 2. Analyse métier : SQL
 
 Python permet d'identifier les premiers signaux. L'analyse SQL vise ensuite à **approfondir ces signaux et à rechercher un profil client particulièrement concerné par le churn**.
 

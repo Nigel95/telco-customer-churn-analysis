@@ -32,7 +32,7 @@ L'approche est volontairement descriptive et orientée métier : l'objectif n'es
 
 ## 🗂️ Dataset
 
-Le projet utilise le dataset **Telco Customer Churn**, issu de l'IBM Sample Dataset et disponible sur Kaggle.
+Le projet utilise le dataset **Telco Customer Churn**, issu de l'IBM Sample Dataset et disponible sur Kaggle : https://www.kaggle.com/datasets/blastchar/telco-customer-churn/data 
 
 Le dataset contient :
 
@@ -222,11 +222,11 @@ Elle doit être interprétée comme une **exposition mensuelle associée aux chu
 
 ---
 
-# 📊 4. Power BI — Dashboard
+# 📊 4. Power BI : Dashboard
 
 Les résultats de l'analyse SQL sont ensuite destinés à être transformés en dashboard Power BI.
 
-## Page 1 — Vue d'ensemble du churn
+## Page 1 : Vue d'ensemble du churn
 
 La première page présente les principaux indicateurs :
 

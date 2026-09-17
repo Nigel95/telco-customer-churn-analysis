@@ -243,7 +243,7 @@ Visualisations principales :
 - taux de churn selon le support technique ;
 - analyse croisée du contrat avec certains services.
 
-## Page 2 — Segment prioritaire de rétention
+## Page 2 : Segment prioritaire de rétention
 
 La deuxième page se concentre sur le segment :
 
